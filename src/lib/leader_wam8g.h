@@ -397,10 +397,11 @@ protected:
 				control[s] += wristFf[k];
 			}
 		}
-		// Wrist load scaling (lib/hand_reflect.h) on the roll and pitch pairs:
-		// at low frequency the wrist feels the follower's measured torque
-		// times handScale, in place of what the position controller and the
-		// wrist force channel deliver. J8's pair has no lever in common.
+		// Wrist load scaling (lib/hand_reflect.h) on J6 and J7, whose
+		// partners carry the grasp point's lever: at low frequency they feel
+		// the follower's measured torque times handScale, in place of what the
+		// position controller and the wrist force channel deliver. J8's
+		// partner turns about the tool axis, on which the grasp point lies.
 		double want[3] = {0.0, 0.0, 0.0}, delivered[3] = {0.0, 0.0, 0.0};
 		if (measured && pidIn.valueDefined()) {
 			const jt_type& pid = pidIn.getValue();

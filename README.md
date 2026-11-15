@@ -27,7 +27,7 @@ package by Amir Noohian and Dylan Miller that is described in
 | `ident/` | `cable_ident`: excitation design and the model fit (Python) |
 | `workspace/` | the `wam` launcher, its settings and the leader's configuration |
 | `config/` | follower configurations and controller mappings |
-| `scripts/` | recording reader, gripper weight fit, CAN setup |
+| `scripts/` | recording reader, gripper weight and grasp lever fits, CAN setup |
 | `test/` | offline tests |
 | `docs/` | controllers, running, calibration, sensor, gripper |
 

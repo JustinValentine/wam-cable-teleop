@@ -77,3 +77,14 @@ handle is from the leader's, so a carried weight turns the leader's wrist too
 hard. `--hand-reflect` (key `h`) scales the wrist's steady torque to the
 handle's lever; see "Wrist load scaling" in [controllers.md](controllers.md).
 Start at `h` then `0.5` and go to `1`.
+
+The ratio is `--hand-lever` over `--grasp-lever`. To measure the grasp lever,
+record a session in which the load is held with the gripper level and still
+for a few seconds, then:
+
+```bash
+python3 scripts/grasp_lever.py teleop_logs/teleop_<time>_follower.tlog
+```
+
+It prints the lever at which the sensor sees the load and the option to start
+the leader with.

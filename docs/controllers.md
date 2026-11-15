@@ -143,9 +143,12 @@ The follower itself still uses the leader's model-based `ext` in its own `u`.
 The wrists are coupled joint to joint, so a load on the gripper reaches the
 leader as a wrist torque. Two things make that torque wrong for the hand:
 
-* The grasp point is 0.21 m from the follower's wrist centre and the handle
-  0.07 m from the leader's. The same force should turn the leader's wrist with
-  a third of the torque it puts on the follower's.
+* The grasp point is 0.21 m out from the follower's wrist centre along its
+  tool axis (the axis of J7), and the handle 0.07 m out from the leader's. A
+  force at the grasp point loads the follower's J6 over the whole lever, J5
+  over the lever times the sine of J6, and J7 not at all. The handle sits the
+  same way on the leader's J7 and J6, so the same force should turn each of
+  them with a third of the torque it puts on its partner.
 * The coupling does not copy the load anyway. It copies what the follower's
   position controller pushes with, and at rest the wrist's friction holds part
   of the load. In recordings the controller carried about half of a 2 to 4 N m
@@ -165,9 +168,38 @@ does. Above 1 Hz the coupling acts as before, so a contact starts as stiff as
 it did and then settles to the scaled force (`lib/hand_reflect.h`).
 
 It needs the follower's `--ft wrist` or `all` and fades out with the sensor.
-J8 is not changed: its partner is the follower's tool roll, which has no lever
-in common with it. With nothing measured, the follower's wrist drag is also
-taken out of the leader's wrist below 1 Hz. Off by default.
+J8 is not changed: its partner is the follower's J7, which turns about the
+tool axis, where the grasp point's force has no lever. With nothing measured,
+the follower's wrist drag is also taken out of the leader's wrist below 1 Hz.
+Off by default.
+
+`--grasp-lever` is the lever as the sensor sees it, which need not be a
+ruler's: how far the sensor's measuring origin lies beyond the tool plate is
+not calibrated (`ft_tool_cal.py --origin-z`). `scripts/grasp_lever.py` reads
+it from a follower recording in which the load is held level and still for a
+few seconds. In recordings here, loads of 8 N and more acted 0.16 to 0.17 m
+from the wrist centre where a ruler gives 0.21 m.
+
+Replayed on those recordings with the follower's J6 loaded by more than
+1 N m, leader J7's torque in the load's direction (median, N m) against the
+measured force acting at the handle:
+
+| | plain coupling | force at the handle | scaled, lever 0.165 | scaled, lever 0.21 |
+| --- | --- | --- | --- | --- |
+| raising the load | 1.61 | 0.86 | 0.94 | 0.76 |
+| lowering it | 0.91 | 0.84 | 0.76 | 0.61 |
+| holding it still | 0.94 | 0.71 | 0.68 | 0.54 |
+
+Raising a load, the follower's wrist friction adds to it and the coupling
+copies the sum, about twice the torque the hand should feel.
+
+A moment about the grasp point (a twist with no force) is scaled like the
+rest. Scaling only the force's share and passing the moment in full was tried
+on recordings and not kept. It depends on the lever being exact: with the
+grasp lever set longer than the sensor's, part of a carried weight counts as
+an opposing moment and the hand is left with too little, and a contact nearer
+the wrist than grasp lever minus handle lever arrives reversed. It needs the
+sensor's origin calibrated first.
 
 ## 6. Dynamics compensation (`dyn - grav`)
 

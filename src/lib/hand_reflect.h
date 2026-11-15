@@ -3,12 +3,16 @@
 /* Wrist load scaling for unequal hand points.
  *
  * The wrists are coupled joint to joint. The follower's grasp point is `grasp`
- * metres from its wrist centre and the leader's handle only `hand` metres from
- * its own, so a force on the gripper should reach the operator's wrist as
- * scale = hand / grasp of the follower's wrist torque. The position coupling
- * delivers something else: whatever the follower's position controller pushes
- * with, which on a WAM wrist is about half the load at rest (the wrist's
- * friction holds the rest), on a lever three times too short.
+ * metres out from its wrist centre along the tool axis, the axis of its J7,
+ * and the leader's handle only `hand` metres out from its own. A force at the
+ * grasp point loads the follower's J6 over the whole lever, its J5 over the
+ * lever times the sine of J6, and its J7 not at all; the handle sits the same
+ * way on the leader's J7 and J6. So a force on the gripper should reach each
+ * of those two as scale = hand / grasp of its partner's torque, and J8, whose
+ * partner is the follower's J7, is left alone. The position coupling delivers
+ * something else: whatever the follower's position controller pushes with,
+ * which on a WAM wrist is about half the load at rest (the wrist's friction
+ * holds the rest).
  *
  * So at low frequency the leader's wrist torque is steered to the measured
  * torque, scaled:
@@ -19,6 +23,12 @@
  * delivered: what this wrist's position controller and wrist force channel
  * apply. With gain 1 the wrist settles on scale * sensed. Above the filter's
  * corner the coupling acts as before, so a contact starts as stiff as it did.
+ *
+ * `grasp` is the lever as the follower's sensor sees it
+ * (scripts/grasp_lever.py). A moment about the grasp point is scaled with the
+ * rest: telling it from the force's share needs the sensor's measuring origin
+ * along the tool axis, which is not calibrated, and an error there would turn
+ * part of a carried weight into a moment passed in full.
  *
  * No libbarrett: tested offline (test/test_hand_reflect.cpp). */
 

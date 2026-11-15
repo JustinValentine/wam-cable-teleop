@@ -158,7 +158,8 @@ void printUsage() {
 			"           place of what the position coupling delivers. Gain 0 to 1, default 0 (off).\n"
 			"           'h' changes it live\n"
 			"  --hand-lever, --grasp-lever  the handle's distance from this wrist's centre and the grasp\n"
-			"           point's from the follower's, m; defaults 0.07 and 0.21\n"
+			"           point's from the follower's along its tool axis, as its sensor sees it\n"
+			"           (scripts/grasp_lever.py), m; defaults 0.07 and 0.21\n"
 			"  --check  check the configuration without opening the CAN bus\n"
 			"%s"
 			"  Defaults: remoteHost=127.0.0.1, recPort=5555, sendPort=5554\n", PROGRAM, teleop_app::usage());
