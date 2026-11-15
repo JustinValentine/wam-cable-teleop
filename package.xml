@@ -1,0 +1,32 @@
+<package format="2">
+
+	<name>wam_teleop</name>
+	<version>1.0.0</version>
+	<description>Four-channel bilateral teleoperation between two Barrett WAM arms</description>
+	<maintainer email="65584395+JustinValentine@users.noreply.github.com">Justin Valentine</maintainer>
+	<author>Amir Noohian</author>
+	<author>Dylan Miller</author>
+	<author>Justin Valentine</author>
+	<license>BSD-3-Clause</license>
+
+	<buildtool_depend>catkin</buildtool_depend>
+
+
+	<depend>roscpp</depend>
+	<depend>std_msgs</depend>
+	<depend>sensor_msgs</depend>
+
+	<build_depend>message_generation</build_depend>
+
+	<exec_depend>message_runtime</exec_depend>
+
+	<!-- the follower's hand option and launch/hand_nav_controller.launch -->
+	<build_depend>gripper_ros_common</build_depend>
+	<exec_depend>gripper_ros_common</exec_depend>
+	<exec_depend>bhand_mux</exec_depend>
+	<exec_depend>joy</exec_depend>
+	<exec_depend>joy_teleop</exec_depend>
+
+	<!-- robotiq_teleop's services (libgripper itself is not a catkin package) -->
+	<depend>std_srvs</depend>
+</package>
