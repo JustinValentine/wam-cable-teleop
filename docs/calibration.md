@@ -11,7 +11,12 @@ them or none: a new zero with an old gravity calibration is worse than before.
 | `wam ft-cal` | the gripper's weight for the force/torque sensor. 15 wrist poses, about a minute and a half |
 | `wam cal excite NAME` | one 60 s excitation run for the dynamics fit, then straight up and home. Writes `excitation/slax_<date>_NAME.dat` |
 
-Each one starts from home with the follower in Idle and asks for
+Run the excitation several times: once to warm the arm up, since friction is
+higher when it is cold, then at least three runs to keep. The trajectory is
+the same each time. The fit uses all of them together, and the difference
+between runs shows how repeatable the torque is.
+
+Each command starts from home with the follower in Idle and asks for
 Shift-Activate. The arm moves by itself in all of them: clear the space and
 keep the E-stop in hand.
 

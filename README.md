@@ -81,14 +81,19 @@ troubleshooting are in [docs/running.md](docs/running.md).
 
 1. Calibrate the arm: `wam cal zero`, `wam cal gravity`
    ([docs/calibration.md](docs/calibration.md)).
-2. Record excitation runs:
+2. Record excitation runs: a warm-up run that is not used, then at least
+   three. Each is the same 60 s trajectory.
 
    ```bash
-   wam cal excite 1        # follower; writes excitation/slax_<date>_1.dat
+   wam cal excite warmup
+   wam cal excite 1        # writes excitation/slax_<date>_1.dat
+   wam cal excite 2
+   wam cal excite 3
    ```
 
    The leader uses `dynamics_excitation_canopen` directly.
-3. Fit the model and write the parameter header the controller compiles in:
+3. List the runs in `ident/cable_ident/arms.py` and fit. All listed runs go
+   into one fit, which writes the parameter header the controller compiles in:
 
    ```bash
    cd ident

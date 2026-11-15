@@ -82,7 +82,9 @@ The tool compiles the controller's regressor (`src/lib/regressor_W.h`) with
 relative to the workspace: `excitation/` and `teleop_logs/` beside `wam_ws/`.
 
 * Excitation logs, `excitation/*.dat`, from `dynamics_excitation_*` or
-  `wam cal excite`. Both formats are read: the four-joint one (t, q, tau at
+  `wam cal excite`. Record several runs. They are stacked into one fit, not
+  averaged first, so every sample counts and one run can be left out to
+  check the others. Both formats are read: the four-joint one (t, q, tau at
   250 Hz) and the full one written with `--trajectory` (t, q, dq, tau at
   500 Hz).
 * Self-driven teleop segments. In every session each arm drives itself to the
