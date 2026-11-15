@@ -130,7 +130,7 @@ The tests are built with the package and need no robot:
 
 ```bash
 cd <workspace>/wam_ws/devel/lib/wam_teleop
-./low_latency_tests && ./wam8g_teleop_tests && ./cable_model_tests
+./low_latency_tests && ./wam8g_teleop_tests && ./hand_reflect_tests && ./cable_model_tests
 ./wam8g_loopback_tests && ./wam8g_loopback_tests_legacy
 ./hand_teleop_tests && ./ft_bus_tests && ./robotiq_teleop_tests
 ```

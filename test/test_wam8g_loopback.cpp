@@ -1128,6 +1128,112 @@ void testFtPair(int port) {
 	}
 }
 
+/* Wrist load scaling (lib/hand_reflect.h): below 1 Hz the leader's J6 and J7
+ * settle on the follower's measured wrist torque times the scale, whatever the
+ * position controller and the wrist force channel deliver. */
+void testHandReflect(int port) {
+	printf("wrist load scaling: pair on ports %d/%d\n", port, port + 1);
+	libconfig::Config config;
+	config.readString(FOLLOWER_KINEMATICS);
+	math::Kinematics<7> kin(config.lookup("kinematics"));
+
+	QuietPair p(port, 0.0);
+	Probe<jt8> leaderTorque(&p.lem);
+	systems::connect(p.leader.wamJPOutput, leaderTorque.input);
+	// The leader's position controller, standing still at these torques.
+	jt8 pid(0.0);
+	pid[5] = 0.40;
+	pid[6] = -0.90;
+	pid[7] = 0.25;
+	systems::Constant<jt8> lPid(pid);
+	systems::connect(lPid.output, p.leader.pidIn);
+
+	systems::KinematicsBase<7> kinBase(config.lookup("kinematics"));
+	systems::connect(p.fJp.output, kinBase.jpInput);
+	systems::connect(p.fJv.output, kinBase.jvInput);
+	FakeFt sensor;
+	ft_core::Limits limits;
+	FtTorques<7> ft(&sensor, ft_core::Tool(), limits, 0.002);
+	systems::connect(kinBase.kinOutput, ft.kinInput);
+	systems::connect(ft.output, p.follower.ftTorqueIn);
+	p.follower.setFt(&ft.report(), true, true);
+
+	const double scale = 0.07 / 0.21;
+	const double wristSign[3] = {1.0, -1.0, 1.0};
+	p.leader.setHandReflect(1.0, scale);
+	p.leader.setWristForceFilter(15.0, 0.0);
+
+	cycles(&p.lem, &p.fem, 50);
+	p.leader.tryLink();
+	p.follower.tryLink();
+	cycles(&p.lem, &p.fem, 1100);
+	check(p.leader.isLinked() && p.follower.isLinked(), "hand: linked");
+	for (int k = 0; k < 3; ++k) check(leaderTorque.value[5 + k] == 0.0, "hand: sensor not in use: nothing added, the coupling as it is");
+
+	// In use, nothing touching: the coupling's steady torque is taken out of J6 and J7.
+	ft.startZero(0.1);
+	cycles(&p.lem, &p.fem, 5000);
+	check(ft.report().use == 1.0 && p.leader.getWristUse() == 1.0, "hand: the sensor is in use on both sides");
+	check(std::fabs(leaderTorque.value[5] + pid[5]) < 1e-5 && std::fabs(leaderTorque.value[6] + pid[6]) < 1e-5,
+	      "hand: free space: J6 and J7 settle on no torque");
+	check(leaderTorque.value[7] == 0.0, "hand: J8 is left alone");
+
+	// A push on the gripper: J6 and J7 settle on the measured wrist torque times the scale.
+	const double pushF[3] = {4.0, -6.0, 9.0}, pushN[3] = {0.30, -0.50, 0.20};
+	const jt7 tauEnv = wrenchTorques(kin, p.fjp, pushF, pushN);
+	for (int i = 0; i < 3; ++i) {
+		sensor.force[i] = pushF[i];
+		sensor.torque[i] = pushN[i];
+	}
+	cycles(&p.lem, &p.fem, 40);  // 0.08 s
+	const double early = leaderTorque.value[6] + pid[6];
+	cycles(&p.lem, &p.fem, 5000);
+	bool felt = true;
+	for (int k = 0; k < 2; ++k) {
+		const double want = scale * wristSign[k] * tauEnv[4 + k];
+		check(std::fabs(leaderTorque.value[5 + k] + pid[5 + k] - want) < 1e-5, "hand: a push: coupling plus scaling is the measured torque times the scale");
+		felt = felt && std::fabs(want) > 0.05;
+	}
+	check(felt, "hand: (the push turns both joints)");
+	check(std::fabs(early) < 0.5 * std::fabs(scale * tauEnv[5]), "hand: it comes in slowly (1 Hz)");
+	check(leaderTorque.value[7] == 0.0, "hand: J8 still left alone");
+
+	// With a wrist force gain as well, the total is the same: the scaling takes that into account.
+	const double gains[3] = {0.1, 0.1, 0.1};
+	p.leader.setWristForce(gains);
+	cycles(&p.lem, &p.fem, 5000);
+	for (int k = 0; k < 2; ++k) {
+		const double want = scale * wristSign[k] * tauEnv[4 + k];
+		check(std::fabs(leaderTorque.value[5 + k] + pid[5 + k] - want) < 1e-5, "hand: with a wrist force gain: the same total");
+	}
+	check(std::fabs(leaderTorque.value[7] - gains[2] * wristSign[2] * tauEnv[6]) < 1e-5, "hand: J8 keeps its wrist force channel");
+	const double off[3] = {0.0, 0.0, 0.0};
+	p.leader.setWristForce(off);
+
+	// Half the gain: half way.
+	p.leader.setHandReflect(0.5, scale);
+	cycles(&p.lem, &p.fem, 5000);
+	for (int k = 0; k < 2; ++k) {
+		const double want = scale * wristSign[k] * tauEnv[4 + k];
+		check(std::fabs(leaderTorque.value[5 + k] + pid[5 + k] - (0.5 * pid[5 + k] + 0.5 * want)) < 1e-5, "hand: gain 0.5: half way between the coupling and the scaled torque");
+	}
+
+	// Gain 0 is the teleop as before.
+	p.leader.setHandReflect(0.0, scale);
+	cycles(&p.lem, &p.fem, 200);
+	for (int k = 0; k < 3; ++k) check(leaderTorque.value[5 + k] == 0.0, "hand: gain 0: nothing added");
+
+	// The sensor stops answering: the scaling fades out with the measured torques.
+	p.leader.setHandReflect(1.0, scale);
+	cycles(&p.lem, &p.fem, 5000);
+	sensor.answering = false;
+	cycles(&p.lem, &p.fem, 2000);
+	check(p.leader.getWristUse() == 0.0, "hand: sensor lost: its torques no longer in use");
+	for (int k = 0; k < 3; ++k) check(leaderTorque.value[5 + k] == 0.0, "hand: sensor lost: the plain coupling again");
+	check(p.leader.isLinked() && p.follower.isLinked(), "hand: still linked");
+	p.follower.setFt(NULL, false, false);
+}
+
 /* follower --wrist-friction: a torque on its J5-J7 in the direction the
  * leader's wrist turns, while linked. */
 void testWristFriction(int port) {
@@ -1158,6 +1264,7 @@ void testWristFriction(int port) {
 int main() {
 	testFtTorques();
 	testFtPair(25654);
+	testHandReflect(25674);
 	testWristFriction(25664);
 	testWristHold();
 	runPair(teleop_law::U4, false, 25554);

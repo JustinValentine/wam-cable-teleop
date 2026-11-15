@@ -16,6 +16,7 @@ instead. The arithmetic is in `src/lib/ft_core.h`.
 | `leader_wam8g --wrist-force g` | gain (0 to 1) on those wrist torques at the leader's wrist. Low-passed at 15 Hz, nothing below 0.03 N m, at most 0.8 N m. Key `w` changes it live |
 | `leader_wam8g --wrist-deadband deg` | the leader wrist's position coupling becomes a tether: no pull while the follower's wrist is within `deg` of the leader's |
 | `follower --wrist-friction nm` | friction feedforward on the follower's wrist so that it lags less. Start at 0.1 |
+| `leader_wam8g --hand-reflect a` | wrist load scaling: below 1 Hz the leader's J6 and J7 feel the measured wrist torque times handle lever / grasp lever, in place of what the position coupling delivers. Gain 0 to 1, default 0. Key `h` changes it live |
 
 The sensor only sees what acts beyond it. A push on the forearm reaches the
 leader through the position coupling alone.
@@ -69,7 +70,10 @@ The wrist's force channel also carries the gripper's own inertia as the wrist
 accelerates. Start `--wrist-force` at 0.2, raise it with `w`, and stop where a
 tap on the leader's wrist rings.
 
-The wrist torques add to the position coupling, which already reflects the
-follower's wrist torque one to one. With a long tool a carried weight
-therefore feels heavy at the leader's short handle; see the last section of
-[controllers.md](controllers.md).
+## Carried weights
+
+The gripper's grasp point is three times further from its wrist than the
+handle is from the leader's, so a carried weight turns the leader's wrist too
+hard. `--hand-reflect` (key `h`) scales the wrist's steady torque to the
+handle's lever; see "Wrist load scaling" in [controllers.md](controllers.md).
+Start at `h` then `0.5` and go to `1`.

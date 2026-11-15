@@ -28,7 +28,7 @@
 IMAGE=robotiq-testenv
 BASE=wam-teleop-testenv
 WS=/home/user/wam_ros/wam_ws
-TESTS="low_latency_tests wam8g_teleop_tests cable_model_tests wam8g_loopback_tests wam8g_loopback_tests_legacy hand_teleop_tests ft_bus_tests robotiq_teleop_tests"
+TESTS="low_latency_tests wam8g_teleop_tests hand_reflect_tests cable_model_tests wam8g_loopback_tests wam8g_loopback_tests_legacy hand_teleop_tests ft_bus_tests robotiq_teleop_tests"
 
 if [ "${1:-}" != --inside ]; then
 	clone=${1:-}

@@ -53,6 +53,7 @@ Type the key, then Enter.
 | `p` | position-position only on / off, both arms | the same |
 | `m` | friction and inertia shares of the cable model's feedforward, e.g. `0.5 0` | the same for its own model, e.g. `0.5 0.25` |
 | `w` | wrist force gain and deadband in degrees, e.g. `0.5 0` | |
+| `h` | wrist load scaling gain, 0 to 1 | |
 | `z` | | zero the force/torque sensor |
 | `f` | J6 friction feedforward, N m | |
 | `t` | tune a position gain | tune a position gain |
@@ -67,6 +68,7 @@ Values set by key last until the program exits.
 | Buzzing, swinging, or it feels wrong | `wam pp on`. If it is violent, E-stop |
 | A steady push with nothing touching | hands off the gripper, then `wam ft-zero`. The sensor drifts |
 | A joint buzzes or creeps by itself | lower that arm's friction share with `m` |
+| A carried weight feels too heavy at the wrist | leader pane, `h` then `1` (wrist load scaling) |
 | The follower does not find the force/torque sensor | it was not in Idle when its program started. `wam stop`, Shift-Idle it, start again |
 | "The leader is not active ... teleop stopped" | a fault, E-stop or Idle on one arm. The other arm holds. `wam stop`, then `wam teleop` |
 | An arm drops to Idle in a fast move | velocity fault. Limits: leader 4 rad/s per joint, follower 3 m/s. Restart the session |

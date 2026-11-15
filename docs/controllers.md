@@ -138,6 +138,37 @@ The leader sends its `ext` for J1-J4 to the follower.
 
 The follower itself still uses the leader's model-based `ext` in its own `u`.
 
+### Wrist load scaling
+
+The wrists are coupled joint to joint, so a load on the gripper reaches the
+leader as a wrist torque. Two things make that torque wrong for the hand:
+
+* The grasp point is 0.21 m from the follower's wrist centre and the handle
+  0.07 m from the leader's. The same force should turn the leader's wrist with
+  a third of the torque it puts on the follower's.
+* The coupling does not copy the load anyway. It copies what the follower's
+  position controller pushes with, and at rest the wrist's friction holds part
+  of the load. In recordings the controller carried about half of a 2 to 4 N m
+  load and a tenth to a quarter of a 0.3 N m one.
+
+With `leader_wam8g --hand-reflect a` (key `h`, 0 to 1) the leader's J6 and J7
+get
+
+    c = a * lowpass_1Hz( k * tau_sensed - tau_delivered ),   at most 3 N m
+
+`tau_sensed` is the follower's measured wrist torque mapped to the joint,
+`k` is handle lever / grasp lever (`--hand-lever`, `--grasp-lever`), and
+`tau_delivered` is what this joint's position controller and wrist force
+channel apply. At `a = 1` the wrist settles on `k * tau_sensed`: a carried
+weight is felt as its force at the handle, whatever the follower's friction
+does. Above 1 Hz the coupling acts as before, so a contact starts as stiff as
+it did and then settles to the scaled force (`lib/hand_reflect.h`).
+
+It needs the follower's `--ft wrist` or `all` and fades out with the sensor.
+J8 is not changed: its partner is the follower's tool roll, which has no lever
+in common with it. With nothing measured, the follower's wrist drag is also
+taken out of the leader's wrist below 1 Hz. Off by default.
+
 ## 6. Dynamics compensation (`dyn - grav`)
 
 * Cable model: gravity, Coriolis, viscous friction and offsets, plus a share
@@ -187,6 +218,6 @@ force at the hand, and part of it acts along the leader's elbow swivel.
 
 The same holds for the wrist: a load at the follower's tool produces a wrist
 torque of weight times the tool's length, and the operator holds that torque
-on a much shorter handle. A carried weight feels heavier by roughly the ratio
-of the two lever arms. Lowering the leader's wrist position gains scales the
-reflected torque down, at the cost of contact stiffness at the wrist.
+on a much shorter handle, so a carried weight feels too heavy. The wrist load
+scaling of section 5 corrects the wrist's share when the force/torque sensor
+is in use.

@@ -94,6 +94,9 @@ struct Options {
 	double wristForceFilter;  // --wrist-force-filter, Hz
 	double wristForceDeadzone;  // --wrist-force-deadzone, Nm
 	double wristDeadbandDeg;  // --wrist-deadband
+	double handReflect;       // --hand-reflect: 0 to 1 (lib/hand_reflect.h)
+	double handLever;         // --hand-lever: wrist centre to the handle, m
+	double graspLever;        // --grasp-lever: the follower's wrist centre to its grasp point, m
 	bool check;
 	teleop_app::Options app;  // the low-latency options (lib/teleop_app.h)
 	std::string remoteHost;
@@ -104,6 +107,7 @@ struct Options {
 		  j6Friction(0.0), cableModel(false), ffFriction(0.0), ffInertia(0.0), wristGravity(true),
 		  wrist(false), wristForceFilter(LeaderWam8g::wristForceFilterDefault()),
 		  wristForceDeadzone(LeaderWam8g::wristForceDeadzoneDefault()), wristDeadbandDeg(0.0),
+		  handReflect(0.0), handLever(0.07), graspLever(0.21),
 		  check(false), remoteHost("127.0.0.1"),
 		  recPort(5555), sendPort(5554) {
 		wristForce[0] = wristForce[1] = wristForce[2] = 0.0;
@@ -116,6 +120,7 @@ void printUsage() {
 			"       [--velocity-limit v] [--j6-friction nm] [--model legacy|cable]\n"
 			"       [--ff-friction s] [--ff-inertia s] [--no-wrist-gravity] [--wrist] [--check]\n"
 			"       [--wrist-force g] [--wrist-deadband deg] [--wrist-force-filter hz] [--wrist-force-deadzone nm]\n"
+			"       [--hand-reflect g] [--hand-lever m] [--grasp-lever m]\n"
 			"       [remoteHost] [recPort] [sendPort]\n"
 			"  --law    feedforward on J1-J4, default u6:\n"
 			"             u1  position-position\n"
@@ -148,6 +153,12 @@ void printUsage() {
 			"           effect only while the follower's measured torques arrive. 'w' changes it live\n"
 			"  --wrist-force-filter  the wrist force channel's low-pass in Hz (0: off), default 15\n"
 			"  --wrist-force-deadzone  the measured wrist torque below which it stays out, Nm, default 0.03\n"
+			"  --hand-reflect  with --wrist and the follower's --ft wrist|all: below 1 Hz, J6 and J7 feel the\n"
+			"           follower's measured wrist torque scaled by the two levers (lib/hand_reflect.h), in\n"
+			"           place of what the position coupling delivers. Gain 0 to 1, default 0 (off).\n"
+			"           'h' changes it live\n"
+			"  --hand-lever, --grasp-lever  the handle's distance from this wrist's centre and the grasp\n"
+			"           point's from the follower's, m; defaults 0.07 and 0.21\n"
 			"  --check  check the configuration without opening the CAN bus\n"
 			"%s"
 			"  Defaults: remoteHost=127.0.0.1, recPort=5555, sendPort=5554\n", PROGRAM, teleop_app::usage());
@@ -250,6 +261,24 @@ bool parseOptions(int argc, char** argv, Options* o) {
 				return false;
 			}
 			++i;
+		} else if (a == "--hand-reflect") {
+			if (!teleop_app::parseList(i + 1 < argc ? argv[i + 1] : NULL, 1, 0.0, 1.0, &o->handReflect)) {
+				printf("%s: --hand-reflect takes a gain from 0 (off) to 1.\n", PROGRAM);
+				return false;
+			}
+			++i;
+		} else if (a == "--hand-lever") {
+			if (!teleop_app::parseList(i + 1 < argc ? argv[i + 1] : NULL, 1, 0.01, 0.30, &o->handLever)) {
+				printf("%s: --hand-lever takes metres from 0.01 to 0.30.\n", PROGRAM);
+				return false;
+			}
+			++i;
+		} else if (a == "--grasp-lever") {
+			if (!teleop_app::parseList(i + 1 < argc ? argv[i + 1] : NULL, 1, 0.01, 0.60, &o->graspLever)) {
+				printf("%s: --grasp-lever takes metres from 0.01 to 0.60.\n", PROGRAM);
+				return false;
+			}
+			++i;
 		} else if (a == "--check") {
 			o->check = true;
 		} else if (a.find(":=") != std::string::npos) {
@@ -263,8 +292,12 @@ bool parseOptions(int argc, char** argv, Options* o) {
 	if (positional.size() > 3) {
 		return false;
 	}
-	if (!o->wrist && (o->wristForceOn() || o->wristDeadbandDeg > 0.0)) {
-		printf("%s: --wrist-force and --wrist-deadband act on the coupled wrist: add --wrist.\n", PROGRAM);
+	if (!o->wrist && (o->wristForceOn() || o->wristDeadbandDeg > 0.0 || o->handReflect > 0.0)) {
+		printf("%s: --wrist-force, --wrist-deadband and --hand-reflect act on the coupled wrist: add --wrist.\n", PROGRAM);
+		return false;
+	}
+	if (o->handLever > o->graspLever) {
+		printf("%s: --hand-lever is longer than --grasp-lever: the scaling is for a handle closer to its wrist.\n", PROGRAM);
 		return false;
 	}
 	if (positional.size() >= 1) o->remoteHost = positional[0];
@@ -319,6 +352,9 @@ void printSettings(const Options& o) {
 		} else {
 			printf("Wrist position coupling: as before (no deadband)\n");
 		}
+		printf("Wrist load scaling: gain %.2f ('h' changes it); below 1 Hz J6 and J7 feel %.2f of the follower's\n"
+				"       measured wrist torque (handle %.3f m, grasp point %.3f m). It needs the follower's --ft wrist|all.\n",
+				o.handReflect, o.handLever / o.graspLever, o.handLever, o.graspLever);
 	} else {
 		printf("Wrist: not coupled; both wrists hold their sync angles\n");
 	}
@@ -534,6 +570,7 @@ int wam_main(int argc, char** argv, ProductManager& pm, systems::Wam<DOF>& wam) 
 	leader.setWristForce(o.wristForce);
 	leader.setWristForceFilter(o.wristForceFilter, o.wristForceDeadzone);
 	leader.setWristDeadband(o.wristDeadbandDeg * M_PI / 180.0);
+	leader.setHandReflect(o.handReflect, o.handLever / o.graspLever);
 	leader.setRealtime(o.app.rtPriority, o.app.rtCpu);
 	leader.setAgeReference(o.app.ageReference);
 	// 'c' (4C off/on) or 'p' (P-P on/off) here or in the other arm's program,
@@ -563,7 +600,7 @@ int wam_main(int argc, char** argv, ProductManager& pm, systems::Wam<DOF>& wam) 
 	systems::connect(wam.jpOutput, leader.wamJPIn);
 	systems::connect(wam.jvOutput, leader.wamJVIn);
 	systems::connect(dynamicExternalTorque.wamExternalTorqueOut, leader.extTorqueIn);
-	systems::connect(wam.supervisoryController.output, leader.pidIn);  // for the recording
+	systems::connect(wam.supervisoryController.output, leader.pidIn);  // the recording, the wrist load scaling
 
 	systems::connect(wam.jpOutput, leaderDynamics.jpInput);
 	systems::connect(wam.jvOutput, leaderDynamics.jvInput);
@@ -780,6 +817,26 @@ int wam_main(int argc, char** argv, ProductManager& pm, systems::Wam<DOF>& wam) 
 			std::getline(std::cin, line);  // the rest of the line
 			} break;
 
+		case 'h': {
+			if (!o.wrist) {
+				std::cout << "\tThe wrist is not coupled (--wrist)." << std::endl;
+				break;
+			}
+			printf("\tWrist load scaling gain now %.2f (scale %.2f); the follower's measured wrist torques are %s.\n"
+					"\tNew gain (0: off, to 1): ",
+					leader.getHandGain(), leader.getHandScale(),
+					leader.getWristUse() > 0.99 ? "in use" : leader.getWristUse() > 0.0 ? "fading" : "not arriving");
+			double g = -1.0;
+			std::cin >> g;
+			if (!std::cin || g < 0.0 || g > 1.0) {
+				std::cin.clear();
+				std::cout << "\tKept it." << std::endl;
+			} else {
+				leader.setHandReflect(g, leader.getHandScale());
+			}
+			std::getline(std::cin, line);  // the rest of the line
+			} break;
+
 		case 'w': {
 			if (!o.wrist) {
 				std::cout << "\tThe wrist is not coupled (--wrist)." << std::endl;
@@ -851,6 +908,7 @@ int wam_main(int argc, char** argv, ProductManager& pm, systems::Wam<DOF>& wam) 
 			printf("    't' to tune the position gains\n");
 			printf("    'f' to set J6's friction feedforward\n");
 			printf("    'w' to set the wrist's force gain and position deadband\n");
+			printf("    'h' to set the wrist load scaling's gain\n");
 			printf("    'm' to set the cable model's feedforward shares (friction, inertia)\n");
 			printf("    'x' to exit\n");
 			break;

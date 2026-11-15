@@ -36,6 +36,7 @@
 #include <barrett/units.h>
 
 #include "ft_core.h"
+#include "hand_reflect.h"
 #include "rt_thread.h"
 #include "teleop_law.h"
 #include "teleop_link.h"
@@ -52,7 +53,7 @@ public:
 	Input<jt_type> extTorqueIn;
 	Input<jt_type> wamGravIn;
 	Input<jt_type> wamDynIn;
-	Input<jt_type> pidIn;  // the position controller's torque, for the recording only (may be unconnected)
+	Input<jt_type> pidIn;  // the position controller's torque: the recording and the wrist load scaling (may be unconnected)
 
 	Output<jt_type> wamJPOutput;    // feedforward torque (J1-J4)
 
@@ -113,6 +114,9 @@ public:
 		wristDeadband = 0.0;
 		deadbandNow = 0.0;
 		wristUse = 0.0;
+		handGain = 0.0;
+		handScale = 1.0 / 3.0;
+		handFf[0] = handFf[1] = handFf[2] = 0.0;
 		theirFlags = 0;
 		sendFlags = 0;
 		barrett::systems::connect(referenceSource.output, referenceIn);
@@ -195,6 +199,17 @@ public:
 		wristDeadband = rad;
 	}
 	double getWristDeadband() const { return wristDeadband; }
+	// Wrist load scaling (lib/hand_reflect.h): at low frequency J6 and J7 feel
+	// the follower's measured wrist torque times `scale` (the handle's lever
+	// over the grasp point's), whatever the position coupling delivers.
+	// gain 0..1; 0: off. Needs the follower's --ft wrist or all.
+	void setHandReflect(double gain, double scale) {
+		BARRETT_SCOPED_LOCK(this->getEmMutex());
+		handGain = gain;
+		handScale = scale;
+	}
+	double getHandGain() const { return handGain; }
+	double getHandScale() const { return handScale; }
 	// 0..1: how far the follower's measured wrist torques are in use.
 	double getWristUse() const { return wristUse; }
 	static double wristForceLimit() { const double v = WRIST_FORCE_LIMIT; return v; }
@@ -261,6 +276,7 @@ public:
 		addColumns(&c, "wrist_ext_rx", 3);  // the follower's wrist slots (its J5-J7), as received
 		addColumns(&c, "wrist_ff", 3);      // the wrist force channel's torque on J6-J8 (part of tau_ff)
 		addColumns(&c, "wrist_ref", 3);     // the follower's wrist as J6-J8, before the deadband (ref: after)
+		addColumns(&c, "hand_ff", 3);       // the wrist load scaling's torque on J6-J8 (part of tau_ff)
 		const char* rest[] = {"wrist_use", "wrist_deadband", "tx_flags", "rx_flags",
 				"rx_new", "rx_age", "rx_seq", "rx_lost", "link_alive", "state", "mode",
 				"mix_force", "mix_own", "mix_dyn", "halted", "send_ok", "rec_dropped"};
@@ -381,6 +397,31 @@ protected:
 				control[s] += wristFf[k];
 			}
 		}
+		// Wrist load scaling (lib/hand_reflect.h) on the roll and pitch pairs:
+		// at low frequency the wrist feels the follower's measured torque
+		// times handScale, in place of what the position controller and the
+		// wrist force channel deliver. J8's pair has no lever in common.
+		double want[3] = {0.0, 0.0, 0.0}, delivered[3] = {0.0, 0.0, 0.0};
+		if (measured && pidIn.valueDefined()) {
+			const jt_type& pid = pidIn.getValue();
+			for (int k = 0; k < 2; ++k) {
+				const int s = wrist.source[k];
+				if (s >= 0) {
+					want[k] = handScale * -wrist.sign[k] * theirWristExt[k];
+					delivered[k] = pid[s] + wristFf[k];
+				}
+			}
+		}
+		double handOut[3];
+		handCorrection.step(want, delivered, handGain, HAND_FILTER, period, HAND_LIMIT, handOut);
+		for (int k = 0; k < 3; ++k) {
+			handFf[k] = 0.0;
+			const int s = wrist.source[k];
+			if (s >= 0 && state == State::LINKED && !halted) {
+				handFf[k] = channel * wristUse * handOut[k];
+				control[s] += handFf[k];
+			}
+		}
 		// The tether's slack next cycle (receive()).
 		deadbandNow = wristDeadband * channel * (anyGain ? wristUse : 1.0);
 		jtOutputValue->setData(&control);
@@ -411,6 +452,7 @@ protected:
 				for (int k = 0; k < 3; ++k) r.put(theirWristExt[k]);
 				for (int k = 0; k < 3; ++k) r.put(wristFf[k]);
 				for (int k = 0; k < 3; ++k) r.put(wristRef[k]);
+				for (int k = 0; k < 3; ++k) r.put(handFf[k]);
 				r.put(wristUse);
 				r.put(deadbandNow);
 				r.put(static_cast<double>(sendFlags));
@@ -553,6 +595,8 @@ private:
 	static constexpr double WRIST_FORCE_DEADZONE = 0.03;  // Nm
 	static constexpr double WRIST_RISE_TIME = 0.5;        // s of measured torques to full use
 	static constexpr double WRIST_FALL_TIME = 0.25;       // s to none without them
+	static constexpr double HAND_FILTER = 1.0;            // Hz, the wrist load scaling (lib/hand_reflect.h)
+	static constexpr double HAND_LIMIT = 3.0;             // Nm it adds on a wrist joint, at most
 	double wristForceGain[3];   // J6-J8 (setWristForce())
 	double wristForceCutoff, wristDeadzone;
 	double wristDeadband;       // rad (setWristDeadband())
@@ -562,6 +606,10 @@ private:
 	double wristFiltered[3];    // ... mapped to J6-J8 and low-passed
 	double wristFf[3];          // the torque applied on J6-J8
 	double wristRef[3];         // the follower's wrist as J6-J8, before the deadband
+	double handGain;            // 0..1 (setHandReflect())
+	double handScale;           // the handle's lever over the grasp point's
+	double handFf[3];           // the torque the wrist load scaling applies on J6-J8
+	hand_reflect::Correction handCorrection;
 	uint32_t theirFlags;        // teleop_link::FLAG_*, from the follower's last packet
 	uint32_t sendFlags;         // ... in this arm's
 };

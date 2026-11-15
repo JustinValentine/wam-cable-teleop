@@ -117,6 +117,10 @@ target_link_libraries(low_latency_tests pthread)
 add_executable(wam8g_teleop_tests test/test_wam8g_teleop.cpp)
 target_include_directories(wam8g_teleop_tests PRIVATE ${EIGEN3_INCLUDE_DIR} src/lib)
 
+## lib/hand_reflect.h: the wrist load scaling.
+add_executable(hand_reflect_tests test/test_hand_reflect.cpp)
+target_include_directories(hand_reflect_tests PRIVATE ${EIGEN3_INCLUDE_DIR} src/lib)
+
 add_executable(wam8g_loopback_tests test/test_wam8g_loopback.cpp src/lib/udp_handler.cpp)
 link_arm_library(wam8g_loopback_tests "${BARRETT_LEADER_PREFIX}" WAM8G)
 target_include_directories(wam8g_loopback_tests PRIVATE src/lib)
